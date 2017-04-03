@@ -11,6 +11,7 @@ import (
 	"encoding/json"
 	"github.com/BurntSushi/toml"
 	"fmt"
+	"gopkg.in/yaml.v2"
 )
 
 var konfigs interface{}
@@ -35,6 +36,10 @@ func GetConf(filename string, configuration interface{}) error {
 
 	if err != nil {
 		err = GetTOMLConfig(filename+".toml", configuration)
+	}
+
+	if err != nil {
+		err = GetYAMLConfig(filename+".yaml", configuration)
 	}
 
 	konfigs = configuration
@@ -101,6 +106,37 @@ func GetTOMLConfig(filename string, configuration interface{}) error {
 
 	return nil
 }
+
+func GetYAMLConfig(filename string, configuration interface{}) error {
+	logrus.Infoln("load config from:", filename)
+	if len(filename) == 0 {
+		return nil
+	}
+
+	var err error
+	var input = io.ReadCloser(os.Stdin)
+	if input, err = os.Open(filename); err != nil {
+		logrus.Warnln("Open file:", err)
+		return err
+	}
+
+	// read the config file
+	yamlBytes, err := ioutil.ReadAll(input)
+	input.Close()
+	if err != nil {
+		logrus.Warnln("ioutil err", err)
+		return err
+	}
+
+	err = yaml.Unmarshal(yamlBytes, configuration)
+	if err != nil {
+		logrus.Warnln("cannot parse yaml", filename, err)
+		return err
+	}
+
+	return nil
+}
+
 
 func GetENVConfig(configuration interface{}) string {
 

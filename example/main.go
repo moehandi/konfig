@@ -13,9 +13,9 @@ import (
 )
 
 type Configuration struct {
-	Server  string
-	Port    int
-	Enabled bool
+	Server  string `json:"Server" yaml:"Server" toml:"Server"`
+	Port    int `json:"Port" yaml:"Port" toml:"Port"`
+	Enabled bool `json:"Enabled" yaml:"Enabled" toml:"Enabled"`
 }
 
 func main() {

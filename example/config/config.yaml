@@ -1,0 +1,5 @@
+---
+Server: yaml.config
+Port: 3000
+Enabled: true
+...
