@@ -1,5 +1,5 @@
 {
   "Server":"json.config",
   "Port":3000,
-  "Enabled":true,
+  "Enabled":true
 }

@@ -9,7 +9,7 @@ import (
 	"github.com/moehandi/konfig"
 	"path/filepath"
 	"runtime"
-	"github.com/moehandi/imagehost/Godeps/_workspace/src/github.com/Sirupsen/logrus"
+	"log"
 )
 
 type Configuration struct {
@@ -35,9 +35,9 @@ func main() {
 
 	}
 
-	logrus.Infoln(myConfig.Server)
-	logrus.Infoln(myConfig.Port)
-	logrus.Infoln(myConfig.Enabled)
+	log.Println("Server:", myConfig.Server)
+	log.Println("Port:", myConfig.Port)
+	log.Println("Enabled:", myConfig.Enabled)
 
 }
 

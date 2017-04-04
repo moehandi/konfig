@@ -4,7 +4,6 @@ import (
 	"os"
 	"reflect"
 	"strconv"
-	"github.com/Sirupsen/logrus"
 
 	"io"
 	"io/ioutil"
@@ -12,13 +11,14 @@ import (
 	"github.com/BurntSushi/toml"
 	"fmt"
 	"gopkg.in/yaml.v2"
+	"log"
 )
 
 var konfigs interface{}
 
 func GetConf(filename string, configuration interface{}) error {
 	var err error
-	logrus.Infoln("Scanning config files...")
+	log.Println("Scanning config files...")
 	//var err error = nil
 
 	if konfigs != nil {
@@ -48,7 +48,7 @@ func GetConf(filename string, configuration interface{}) error {
 }
 
 func GetJSONConfig(filename string, configuration interface{}) error {
-	logrus.Infoln("load config from:", filename)
+	log.Println("load config from:", filename)
 	if len(filename) == 0 {
 		return nil
 	}
@@ -56,7 +56,7 @@ func GetJSONConfig(filename string, configuration interface{}) error {
 	var err error
 	var input = io.ReadCloser(os.Stdin)
 	if input, err = os.Open(filename); err != nil {
-		logrus.Warnln("Open file:", err)
+		log.Println("Open file:", err)
 		return err
 	}
 
@@ -64,13 +64,13 @@ func GetJSONConfig(filename string, configuration interface{}) error {
 	jsonBytes, err := ioutil.ReadAll(input)
 	input.Close()
 	if err != nil {
-		logrus.Warnln("ioutil err", err)
+		log.Println("ioutil err", err)
 		return err
 	}
 
 	err = json.Unmarshal(jsonBytes, configuration)
 	if err != nil {
-		logrus.Warnln("cannot parse json", filename, err)
+		log.Println("cannot parse json", filename, err)
 		return err
 	}
 
@@ -78,7 +78,7 @@ func GetJSONConfig(filename string, configuration interface{}) error {
 }
 
 func GetTOMLConfig(filename string, configuration interface{}) error {
-	logrus.Infoln("load config from:", filename)
+	log.Println("load config from:", filename)
 	if len(filename) == 0 {
 		return nil
 	}
@@ -86,7 +86,7 @@ func GetTOMLConfig(filename string, configuration interface{}) error {
 	var err error
 	var input = io.ReadCloser(os.Stdin)
 	if input, err = os.Open(filename); err != nil {
-		logrus.Warnln("Open file:", err)
+		log.Println("Open file:", err)
 		return err
 	}
 
@@ -94,13 +94,13 @@ func GetTOMLConfig(filename string, configuration interface{}) error {
 	tomlBytes, err := ioutil.ReadAll(input)
 	input.Close()
 	if err != nil {
-		logrus.Warnln("ioutil err", err)
+		log.Println("ioutil err", err)
 		return err
 	}
 
 	err = toml.Unmarshal(tomlBytes, configuration)
 	if err != nil {
-		logrus.Warnln("cannot parse toml", filename, err)
+		log.Println("cannot parse toml", filename, err)
 		return err
 	}
 
@@ -108,7 +108,7 @@ func GetTOMLConfig(filename string, configuration interface{}) error {
 }
 
 func GetYAMLConfig(filename string, configuration interface{}) error {
-	logrus.Infoln("load config from:", filename)
+	log.Println("load config from:", filename)
 	if len(filename) == 0 {
 		return nil
 	}
@@ -116,7 +116,7 @@ func GetYAMLConfig(filename string, configuration interface{}) error {
 	var err error
 	var input = io.ReadCloser(os.Stdin)
 	if input, err = os.Open(filename); err != nil {
-		logrus.Warnln("Open file:", err)
+		log.Println("Open file:", err)
 		return err
 	}
 
@@ -124,13 +124,13 @@ func GetYAMLConfig(filename string, configuration interface{}) error {
 	yamlBytes, err := ioutil.ReadAll(input)
 	input.Close()
 	if err != nil {
-		logrus.Warnln("ioutil err", err)
+		log.Println("ioutil err", err)
 		return err
 	}
 
 	err = yaml.Unmarshal(yamlBytes, configuration)
 	if err != nil {
-		logrus.Warnln("cannot parse yaml", filename, err)
+		log.Println("cannot parse yaml", filename, err)
 		return err
 	}
 
@@ -140,7 +140,7 @@ func GetYAMLConfig(filename string, configuration interface{}) error {
 
 func GetENVConfig(configuration interface{}) string {
 
-	logrus.Infoln("Loading config from Environment...")
+	log.Println("Loading config from Environment...")
 	typ := reflect.TypeOf(configuration)
 	// if a pointer to a struct is passed, get the type of the derefference object
 	if typ.Kind() == reflect.Ptr {
@@ -149,7 +149,7 @@ func GetENVConfig(configuration interface{}) string {
 	}
 
 	if os.Getenv(typ.Field(0).Name) == "" {
-		logrus.Warnln("No environment value")
+		log.Println("No environment value")
 		return "no_env"
 	}
 
