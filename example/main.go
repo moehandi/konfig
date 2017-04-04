@@ -27,8 +27,6 @@ func main() {
 
 	myConfig := Configuration{}
 	err := konfig.GetConf("config/config", &myConfig)
-	//err := konfig.GetConf("config/config.toml", &myConfig)
-	//err := konfig.GetConf(getFileName(), &myConfig)
 	if err != nil {
 		fmt.Println("os Exit 500", err)
 		os.Exit(500)
