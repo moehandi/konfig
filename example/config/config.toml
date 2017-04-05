@@ -1,3 +1,8 @@
 Server = "toml.config"
 Port = 9000
-Enabled = true
+Debug = true
+
+[Database]
+Type = "MySQL"
+Name = "MyDB"
+Port = 3306

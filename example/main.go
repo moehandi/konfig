@@ -7,15 +7,22 @@ import (
 	"strings"
 
 	"github.com/moehandi/konfig"
+	"log"
 	"path/filepath"
 	"runtime"
-	"log"
 )
 
 type Configuration struct {
-	Server  string `json:"Server" yaml:"Server" toml:"Server"`
-	Port    int `json:"Port" yaml:"Port" toml:"Port"`
-	Enabled bool `json:"Enabled" yaml:"Enabled" toml:"Enabled"`
+	Server   string `json:"Server" yaml:"Server" toml:"Server"`
+	Port     int    `json:"Port" yaml:"Port" toml:"Port"`
+	Debug    bool   `json:"Debug" yaml:"Debug" toml:"Debug"`
+	Database DB	`json:"Database" yaml:"Database" toml:"Database"`
+}
+
+type DB struct {
+	Type string `json:"Type" yaml:"Type" toml:"Type"`
+	Name string `json:"Name" yaml:"Name" toml:"Name"`
+	Port int    `json:"Port" yaml:"Port" toml:"Port"`
 }
 
 func main() {
@@ -35,7 +42,10 @@ func main() {
 
 	log.Println("Server:", myConfig.Server)
 	log.Println("Port:", myConfig.Port)
-	log.Println("Enabled:", myConfig.Enabled)
+	log.Println("Debug:", myConfig.Debug)
+	log.Println("Db Type:", myConfig.Database.Type)
+	log.Println("Db Name:", myConfig.Database.Name)
+	log.Println("Db Port:", myConfig.Database.Port)
 
 }
 

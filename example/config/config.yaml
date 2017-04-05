@@ -1,5 +1,9 @@
 ---
 Server: yaml.config
-Port: 3000
-Enabled: true
+Port: 9000
+Debug: true
+Database:
+  Type: MySQL
+  Name: MyDBName
+  Port: 3306
 ...

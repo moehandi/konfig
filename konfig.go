@@ -5,12 +5,12 @@ import (
 	"reflect"
 	"strconv"
 
+	"encoding/json"
+	"fmt"
+	"github.com/BurntSushi/toml"
+	"gopkg.in/yaml.v2"
 	"io"
 	"io/ioutil"
-	"encoding/json"
-	"github.com/BurntSushi/toml"
-	"fmt"
-	"gopkg.in/yaml.v2"
 	"log"
 )
 
@@ -137,7 +137,6 @@ func GetYAMLConfig(filename string, configuration interface{}) error {
 	return nil
 }
 
-
 func GetENVConfig(configuration interface{}) string {
 
 	log.Println("Loading config from Environment...")
@@ -172,23 +171,23 @@ func GetENVConfig(configuration interface{}) string {
 						// change value
 						kind := f.Kind()
 						if kind == reflect.Int || kind == reflect.Int64 {
-							setStringToInt(f, value, 64)
+							StringToInt(f, value, 64)
 						} else if kind == reflect.Int32 {
-							setStringToInt(f, value, 32)
+							StringToInt(f, value, 32)
 						} else if kind == reflect.Int16 {
-							setStringToInt(f, value, 16)
+							StringToInt(f, value, 16)
 						} else if kind == reflect.Uint || kind == reflect.Uint64 {
-							setStringToUInt(f, value, 64)
+							StringToUInt(f, value, 64)
 						} else if kind == reflect.Uint32 {
-							setStringToUInt(f, value, 32)
+							StringToUInt(f, value, 32)
 						} else if kind == reflect.Uint16 {
-							setStringToUInt(f, value, 16)
+							StringToUInt(f, value, 16)
 						} else if kind == reflect.Bool {
-							setStringToBool(f, value)
+							StringToBool(f, value)
 						} else if kind == reflect.Float64 {
-							setStringToFloat(f, value, 64)
+							StringToFloat(f, value, 64)
 						} else if kind == reflect.Float32 {
-							setStringToFloat(f, value, 32)
+							StringToFloat(f, value, 32)
 						} else if kind == reflect.String {
 							f.SetString(value)
 						}
@@ -200,7 +199,7 @@ func GetENVConfig(configuration interface{}) string {
 	return "env"
 }
 
-func setStringToInt(f reflect.Value, value string, bitSize int) {
+func StringToInt(f reflect.Value, value string, bitSize int) {
 	convertedValue, err := strconv.ParseInt(value, 10, bitSize)
 
 	if err == nil {
@@ -210,7 +209,7 @@ func setStringToInt(f reflect.Value, value string, bitSize int) {
 	}
 }
 
-func setStringToUInt(f reflect.Value, value string, bitSize int) {
+func StringToUInt(f reflect.Value, value string, bitSize int) {
 	convertedValue, err := strconv.ParseUint(value, 10, bitSize)
 
 	if err == nil {
@@ -220,7 +219,7 @@ func setStringToUInt(f reflect.Value, value string, bitSize int) {
 	}
 }
 
-func setStringToBool(f reflect.Value, value string) {
+func StringToBool(f reflect.Value, value string) {
 	convertedValue, err := strconv.ParseBool(value)
 
 	if err == nil {
@@ -228,7 +227,7 @@ func setStringToBool(f reflect.Value, value string) {
 	}
 }
 
-func setStringToFloat(f reflect.Value, value string, bitSize int) {
+func StringToFloat(f reflect.Value, value string, bitSize int) {
 	convertedValue, err := strconv.ParseFloat(value, bitSize)
 
 	if err == nil {
