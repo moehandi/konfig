@@ -8,10 +8,11 @@ import (
 	"encoding/json"
 	"fmt"
 	"github.com/BurntSushi/toml"
-	"gopkg.in/yaml.v2"
+	"github.com/ghodss/yaml"
 	"io"
 	"io/ioutil"
 	"log"
+	//"gopkg.in/yaml.v2"
 )
 
 var konfigs interface{}
@@ -121,7 +122,7 @@ func GetYAMLConfig(filename string, configuration interface{}) error {
 	}
 
 	// read the config file
-	yamlBytes, err := ioutil.ReadAll(input)
+	yamlBytes, err := ioutil.ReadFile(filename)
 	input.Close()
 	if err != nil {
 		log.Println("ioutil err", err)
