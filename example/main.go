@@ -13,16 +13,23 @@ import (
 )
 
 type Configuration struct {
-	Server   string `json:"Server" yaml:"Server" toml:"Server"`
-	Port     int    `json:"Port" yaml:"Port" toml:"Port"`
-	Debug    bool   `json:"Debug" yaml:"Debug" toml:"Debug"`
-	Database DB	`json:"Database" yaml:"Database" toml:"Database"`
+	Server   string
+	Port     int
+	Debug    bool
+	Database DB
+	//Server   string `json:"Server" yaml:"Server" toml:"Server"`
+	//Port     int    `json:"Port" yaml:"Port" toml:"Port"`
+	//Debug    bool   `json:"Debug" yaml:"Debug" toml:"Debug"`
+	//Database DB	`json:"Database" yaml:"Database" toml:"Database"`
 }
 
 type DB struct {
-	Type string `json:"Type" yaml:"Type" toml:"Type"`
-	Name string `json:"Name" yaml:"Name" toml:"Name"`
-	Port int    `json:"Port" yaml:"Port" toml:"Port"`
+	Type string
+	Name string
+	Port int
+	//Type string `json:"Type" yaml:"Type" toml:"Type"`
+	//Name string `json:"Name" yaml:"Name" toml:"Name"`
+	//Port int    `json:"Port" yaml:"Port" toml:"Port"`
 }
 
 func main() {
