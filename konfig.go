@@ -13,42 +13,133 @@ import (
 	"io/ioutil"
 	"log"
 	//"gopkg.in/yaml.v2"
+	"errors"
+	"strings"
 )
 
 var konfigs interface{}
 
-func GetConf(filename string, configuration interface{}) error {
+
+func GetConf(filename string, config interface{}) error {
 	var err error
 	log.Println("Scanning config files...")
-	//var err error = nil
 
 	if konfigs != nil {
-		configuration = konfigs
+		config = konfigs
 		return nil
 	}
 
 	// Prioritize to check config environment first
-	status := GetENVConfig(configuration)
+	status := GetENVConfig(config)
 
-	//err = GetTOMLConfig(filename, configuration)
+	//err = GetTOMLConfig(filename, config)
 	if status == "no_env" {
-		err = GetJSONConfig(filename+".json", configuration)
+		err = parseConfig(filename+".json", config)
 	}
 
 	if err != nil {
-		err = GetTOMLConfig(filename+".toml", configuration)
+		err = parseConfig(filename+".toml", config)
 	}
 
 	if err != nil {
-		err = GetYAMLConfig(filename+".yaml", configuration)
+		err = parseConfig(filename+".yaml", config)
 	}
 
-	konfigs = configuration
+	konfigs = config
 
 	return nil
 }
 
-func GetJSONConfig(filename string, configuration interface{}) error {
+// Load certains config file like (json, toml, yaml) doesn't provide extension just give it file name.
+// it will autodetect for failed, error, and not found file and then resume to next precedence if available
+// it take precedence json -> toml -> yaml
+func LoadConfigFileNoExt(config interface{}, fileName string) error {
+	log.Println("Scanning config files...")
+
+	if konfigs != nil {
+		config = konfigs
+		return nil
+	}
+
+	if err := LoadJSON(fileName+".json", config); err != nil {
+		if err := LoadTOML(fileName+".toml", config); err != nil {
+			if err := LoadYAML(fileName+".yaml", config); err != nil {
+				log.Println("FAILED through the config", fileName, "(json,toml,yaml)")
+				return err
+			}
+		}
+	}
+
+	konfigs = config
+
+	return nil
+}
+
+func processFile(config interface{}, file string) error {
+	data, err := ioutil.ReadFile(file)
+	if err != nil {
+		return err
+	}
+
+	switch {
+	case strings.HasSuffix(file, ".yaml") || strings.HasSuffix(file, ".yml"):
+		return yaml.Unmarshal(data, config)
+	case strings.HasSuffix(file, ".toml"):
+		return toml.Unmarshal(data, config)
+	case strings.HasSuffix(file, ".json"):
+		return json.Unmarshal(data, config)
+	default:
+		if toml.Unmarshal(data, config) != nil {
+			if json.Unmarshal(data, config) != nil {
+				if yaml.Unmarshal(data, config) != nil {
+					return errors.New("failed to decode config")
+				}
+			}
+		}
+		return nil
+	}
+}
+
+func LoadConfigFiles(config interface{}, files ...string) error {
+	//var fileList []string
+	_, fileList := GetConfigFilesWithExt(files...)
+	//fmt.Println(err)
+	for _, file := range fileList {
+		if err := processFile(config, file); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func parseConfig(file string, config interface{}) error{
+	data, err := ioutil.ReadFile(file)
+	if err != nil {
+		return err
+	}
+
+	switch {
+	case strings.HasSuffix(file, ".yaml") || strings.HasSuffix(file, ".yml"):
+		return yaml.Unmarshal(data, config)
+	//return LoadYAMLConfig(file, config)
+	case strings.HasSuffix(file, ".toml"):
+		return toml.Unmarshal(data, config)
+
+	case strings.HasSuffix(file, ".json"):
+		return json.Unmarshal(data, config)
+	default:
+		if toml.Unmarshal(data, config) != nil {
+			if json.Unmarshal(data, config) != nil {
+				if yaml.Unmarshal(data, config) != nil {
+					return errors.New("failed to decode config")
+				}
+			}
+		}
+		return nil
+	}
+}
+
+func LoadJSON(filename string, configuration interface{}) error {
 	log.Println("load config from:", filename)
 	if len(filename) == 0 {
 		return nil
@@ -78,7 +169,7 @@ func GetJSONConfig(filename string, configuration interface{}) error {
 	return nil
 }
 
-func GetTOMLConfig(filename string, configuration interface{}) error {
+func LoadTOML(filename string, configuration interface{}) error {
 	log.Println("load config from:", filename)
 	if len(filename) == 0 {
 		return nil
@@ -108,7 +199,7 @@ func GetTOMLConfig(filename string, configuration interface{}) error {
 	return nil
 }
 
-func GetYAMLConfig(filename string, configuration interface{}) error {
+func LoadYAML(filename string, configuration interface{}) error {
 	log.Println("load config from:", filename)
 	if len(filename) == 0 {
 		return nil
@@ -236,4 +327,27 @@ func StringToFloat(f reflect.Value, value string, bitSize int) {
 			f.SetFloat(convertedValue)
 		}
 	}
+}
+
+func GetConfigFilesWithExt(files ...string) (error, []string){
+	var fileList []string
+
+	for i := len(files) - 1; i >=0; i-- {
+		found := false
+		file := files[i]
+
+		if fileInfo, err := os.Stat(file); err == nil && fileInfo.Mode().IsRegular() {
+			found = true
+			fileList = append(fileList, file)
+			fmt.Println("file found:", fileList)
+		}
+
+		if !found {
+			//err := error
+			fmt.Println(fileList)
+			return errors.New("Not found configuration files"), nil
+		}
+	}
+
+	return nil, fileList
 }
