@@ -1,354 +1,494 @@
 package konfig
 
 import (
+	"encoding/json"
+	"errors"
+	"fmt"
 	"os"
+	"path/filepath"
 	"reflect"
 	"strconv"
-
-	"encoding/json"
-	"fmt"
-	"github.com/BurntSushi/toml"
-	"github.com/ghodss/yaml"
-	"io"
-	"io/ioutil"
-	"log"
-	//"gopkg.in/yaml.v2"
-
-	"errors"
 	"strings"
+	"unicode"
+
+	"github.com/BurntSushi/toml"
+	"sigs.k8s.io/yaml"
 )
 
-var konfigs interface{}
+// ErrNoSources indicates that no configuration sources produced any value.
+var ErrNoSources = errors.New("konfig: no configuration sources found")
 
+// Option modifies how Load discovers and applies configuration.
+type Option func(*options)
 
-func GetConf(filename string, config interface{}) error {
-	var err error
-	log.Println("Scanning config files...")
-
-	if konfigs != nil {
-		config = konfigs
-		return nil
-	}
-
-	// Prioritize to check config environment first
-	status := GetENVConfig(config)
-
-	//err = GetTOMLConfig(filename, config)
-	if status == "no_env" {
-		err = parseConfig(filename+".json", config)
-	}
-
-	if err != nil {
-		err = parseConfig(filename+".toml", config)
-	}
-
-	if err != nil {
-		err = parseConfig(filename+".yaml", config)
-	}
-
-	konfigs = config
-
-	return nil
+type options struct {
+	envPrefix string
+	files     []string
+	base      string
 }
 
-// Load certains config file like (json, toml, yaml) doesn't provide extension just give it file name.
-// it will autodetect for failed, error, and not found file and then resume to next precedence if available
-// it take precedence json -> toml -> yaml
-func LoadConfigFileNoExt(config interface{}, fileName string) error {
-	log.Println("Scanning config files...")
+// WithEnvPrefix configures a prefix that is prepended to every generated
+// environment variable key. Nested struct names are appended using underscores.
+func WithEnvPrefix(prefix string) Option {
+	return func(o *options) {
+		o.envPrefix = prefix
+	}
+}
 
-	if konfigs != nil {
-		config = konfigs
-		return nil
+// WithFiles declares additional configuration files to evaluate in the given
+// order. Later files in the list can override values from earlier ones.
+func WithFiles(files ...string) Option {
+	return func(o *options) {
+		o.files = append(o.files, files...)
+	}
+}
+
+// withBase sets the base filename (without extension) used for implicit lookup.
+func withBase(base string) Option {
+	return func(o *options) {
+		o.base = base
+	}
+}
+
+// Load populates config by reading from the declared files and environment
+// variables, returning ErrNoSources when nothing supplies a value. The config
+// argument must be a non-nil pointer to a struct (or a struct of structs).
+func Load(config interface{}, opts ...Option) error {
+	if config == nil {
+		return errors.New("konfig: config must not be nil")
 	}
 
-	if err := LoadJSON(fileName+".json", config); err != nil {
-		if err := LoadTOML(fileName+".toml", config); err != nil {
-			if err := LoadYAML(fileName+".yaml", config); err != nil {
-				log.Println("FAILED through the config", fileName, "(json,toml,yaml)")
-				return err
-			}
+	rv := reflect.ValueOf(config)
+	if rv.Kind() != reflect.Ptr || rv.IsNil() {
+		return errors.New("konfig: config must be a non-nil pointer")
+	}
+
+	cfg := options{}
+	for _, opt := range opts {
+		opt(&cfg)
+	}
+
+	var loaded bool
+
+	if cfg.base != "" {
+		baseFiles := []string{
+			cfg.base + ".json",
+			cfg.base + ".toml",
+			cfg.base + ".yaml",
+			cfg.base + ".yml",
 		}
-	}
-
-	konfigs = config
-
-	return nil
-}
-
-func processFile(config interface{}, file string) error {
-	data, err := ioutil.ReadFile(file)
-	if err != nil {
-		return err
-	}
-
-	switch {
-	case strings.HasSuffix(file, ".yaml") || strings.HasSuffix(file, ".yml"):
-		return yaml.Unmarshal(data, config)
-	case strings.HasSuffix(file, ".toml"):
-		return toml.Unmarshal(data, config)
-	case strings.HasSuffix(file, ".json"):
-		return json.Unmarshal(data, config)
-	default:
-		if toml.Unmarshal(data, config) != nil {
-			if json.Unmarshal(data, config) != nil {
-				if yaml.Unmarshal(data, config) != nil {
-					return errors.New("failed to decode config")
-				}
-			}
-		}
-		return nil
-	}
-}
-
-func LoadConfigFiles(config interface{}, files ...string) error {
-	//var fileList []string
-	_, fileList := GetConfigFilesWithExt(files...)
-	//fmt.Println(err)
-	for _, file := range fileList {
-		if err := processFile(config, file); err != nil {
+		baseLoaded, err := loadFirstAvailable(baseFiles, config)
+		if err != nil {
 			return err
 		}
+		loaded = loaded || baseLoaded
 	}
-	return nil
-}
 
-func parseConfig(file string, config interface{}) error{
-	data, err := ioutil.ReadFile(file)
+	if len(cfg.files) > 0 {
+		fileLoaded, err := loadSequential(cfg.files, config)
+		if err != nil {
+			return err
+		}
+		loaded = loaded || fileLoaded
+	}
+
+	applied, err := applyEnvOverrides(rv, cfg.envPrefix)
 	if err != nil {
 		return err
 	}
 
-	switch {
-	case strings.HasSuffix(file, ".yaml") || strings.HasSuffix(file, ".yml"):
-		return yaml.Unmarshal(data, config)
-	//return LoadYAMLConfig(file, config)
-	case strings.HasSuffix(file, ".toml"):
-		return toml.Unmarshal(data, config)
-
-	case strings.HasSuffix(file, ".json"):
-		return json.Unmarshal(data, config)
-	default:
-		if toml.Unmarshal(data, config) != nil {
-			if json.Unmarshal(data, config) != nil {
-				if yaml.Unmarshal(data, config) != nil {
-					return errors.New("failed to decode config")
-				}
-			}
-		}
-		return nil
+	if !loaded && applied == 0 {
+		return ErrNoSources
 	}
+
+	return nil
 }
 
+// GetConf preserves the legacy API of resolving a base filename (without
+// extension) and populating config based on the first available source.
+func GetConf(base string, config interface{}) error {
+	return Load(config, withBase(base))
+}
+
+// LoadConfigFileNoExt attempts to load configuration using a base filename,
+// trying JSON, TOML, then YAML in that order.
+func LoadConfigFileNoExt(config interface{}, base string) error {
+	return Load(config, withBase(base))
+}
+
+// LoadConfigFiles sequentially loads the provided files, allowing later files
+// to override earlier ones.
+func LoadConfigFiles(config interface{}, files ...string) error {
+	return Load(config, WithFiles(files...))
+}
+
+// GetConfigFilesWithExt returns the subset of files that exist as regular
+// files, preserving the provided order. It returns ErrNoSources if none exist.
+func GetConfigFilesWithExt(files ...string) ([]string, error) {
+	var matched []string
+	for _, file := range files {
+		if file == "" {
+			continue
+		}
+		info, err := os.Stat(file)
+		if err != nil {
+			if errors.Is(err, os.ErrNotExist) {
+				continue
+			}
+			return nil, fmt.Errorf("konfig: stat %s: %w", file, err)
+		}
+		if info.Mode().IsRegular() {
+			matched = append(matched, file)
+		}
+	}
+
+	if len(matched) == 0 {
+		return nil, ErrNoSources
+	}
+
+	return matched, nil
+}
+
+// LoadJSON reads and unmarshals a JSON configuration file into configuration.
 func LoadJSON(filename string, configuration interface{}) error {
-	log.Println("load config from:", filename)
-	if len(filename) == 0 {
-		return nil
-	}
-
-	var err error
-	var input = io.ReadCloser(os.Stdin)
-	if input, err = os.Open(filename); err != nil {
-		log.Println("Open file:", err)
-		return err
-	}
-
-	// read the config file
-	jsonBytes, err := ioutil.ReadAll(input)
-	input.Close()
-	if err != nil {
-		log.Println("ioutil err", err)
-		return err
-	}
-
-	err = json.Unmarshal(jsonBytes, configuration)
-	if err != nil {
-		log.Println("cannot parse json", filename, err)
-		return err
-	}
-
-	return nil
+	return decodeFile(filename, configuration, json.Unmarshal)
 }
 
+// LoadTOML reads and unmarshals a TOML configuration file into configuration.
 func LoadTOML(filename string, configuration interface{}) error {
-	log.Println("load config from:", filename)
-	if len(filename) == 0 {
-		return nil
-	}
-
-	var err error
-	var input = io.ReadCloser(os.Stdin)
-	if input, err = os.Open(filename); err != nil {
-		log.Println("Open file:", err)
-		return err
-	}
-
-	// read the config file
-	tomlBytes, err := ioutil.ReadAll(input)
-	input.Close()
-	if err != nil {
-		log.Println("ioutil err", err)
-		return err
-	}
-
-	err = toml.Unmarshal(tomlBytes, configuration)
-	if err != nil {
-		log.Println("cannot parse toml", filename, err)
-		return err
-	}
-
-	return nil
+	return decodeFile(filename, configuration, toml.Unmarshal)
 }
 
+// LoadYAML reads and unmarshals a YAML configuration file into configuration.
 func LoadYAML(filename string, configuration interface{}) error {
-	log.Println("load config from:", filename)
-	if len(filename) == 0 {
+	return decodeFile(filename, configuration, unmarshalYAML)
+}
+
+func unmarshalYAML(data []byte, target interface{}) error {
+	return yaml.Unmarshal(data, target)
+}
+
+func decodeFile(filename string, target interface{}, unmarshal func([]byte, interface{}) error) error {
+	if filename == "" {
 		return nil
 	}
 
-	var err error
-	var input = io.ReadCloser(os.Stdin)
-	if input, err = os.Open(filename); err != nil {
-		log.Println("Open file:", err)
-		return err
+	data, err := os.ReadFile(filename)
+	if err != nil {
+		return fmt.Errorf("konfig: read %s: %w", filename, err)
 	}
 
-	// read the config file
-	yamlBytes, err := ioutil.ReadFile(filename)
-	input.Close()
-	if err != nil {
-		log.Println("ioutil err", err)
-		return err
-	}
-
-	err = yaml.Unmarshal(yamlBytes, configuration)
-	if err != nil {
-		log.Println("cannot parse yaml", filename, err)
-		return err
+	if err := unmarshal(data, target); err != nil {
+		return fmt.Errorf("konfig: decode %s: %w", filename, err)
 	}
 
 	return nil
 }
 
-func GetENVConfig(configuration interface{}) string {
+func loadFirstAvailable(files []string, config interface{}) (bool, error) {
+	for _, file := range files {
+		file = strings.TrimSpace(file)
+		if file == "" {
+			continue
+		}
 
-	log.Println("Loading config from Environment...")
-	typ := reflect.TypeOf(configuration)
-	// if a pointer to a struct is passed, get the type of the derefference object
-	if typ.Kind() == reflect.Ptr {
-		fmt.Println("reflect.Ptr")
-		typ = typ.Elem()
+		data, err := os.ReadFile(file)
+		if err != nil {
+			if errors.Is(err, os.ErrNotExist) {
+				continue
+			}
+			return false, fmt.Errorf("konfig: read %s: %w", file, err)
+		}
+
+		if err := unmarshalByExtension(file, data, config); err != nil {
+			return false, err
+		}
+
+		return true, nil
 	}
 
-	if os.Getenv(typ.Field(0).Name) == "" {
-		log.Println("No environment value")
-		return "no_env"
+	return false, nil
+}
+
+func loadSequential(files []string, config interface{}) (bool, error) {
+	var loaded bool
+
+	for _, file := range files {
+		file = strings.TrimSpace(file)
+		if file == "" {
+			continue
+		}
+
+		data, err := os.ReadFile(file)
+		if err != nil {
+			if errors.Is(err, os.ErrNotExist) {
+				continue
+			}
+			return loaded, fmt.Errorf("konfig: read %s: %w", file, err)
+		}
+
+		if err := unmarshalByExtension(file, data, config); err != nil {
+			return loaded, err
+		}
+
+		loaded = true
 	}
 
-	for i := 0; i < typ.NumField(); i++ {
-		p := typ.Field(i)
-		value := os.Getenv(p.Name)
-		if !p.Anonymous && len(value) > 0 {
-			//fmt.Println("!p.Anonymous")
-			// struct
-			s := reflect.ValueOf(configuration).Elem()
+	return loaded, nil
+}
 
-			if s.Kind() == reflect.Struct {
-				// exported field
-				f := s.FieldByName(p.Name)
-				if f.IsValid() {
-					// A Value can be changed only if it is
-					// addressable and was not obtained by
-					// the use of unexported struct fields.
-					if f.CanSet() {
-						// change value
-						kind := f.Kind()
-						if kind == reflect.Int || kind == reflect.Int64 {
-							StringToInt(f, value, 64)
-						} else if kind == reflect.Int32 {
-							StringToInt(f, value, 32)
-						} else if kind == reflect.Int16 {
-							StringToInt(f, value, 16)
-						} else if kind == reflect.Uint || kind == reflect.Uint64 {
-							StringToUInt(f, value, 64)
-						} else if kind == reflect.Uint32 {
-							StringToUInt(f, value, 32)
-						} else if kind == reflect.Uint16 {
-							StringToUInt(f, value, 16)
-						} else if kind == reflect.Bool {
-							StringToBool(f, value)
-						} else if kind == reflect.Float64 {
-							StringToFloat(f, value, 64)
-						} else if kind == reflect.Float32 {
-							StringToFloat(f, value, 32)
-						} else if kind == reflect.String {
-							f.SetString(value)
-						}
-					}
-				}
+func unmarshalByExtension(file string, data []byte, config interface{}) error {
+	switch ext := strings.ToLower(filepath.Ext(file)); ext {
+	case ".json":
+		if err := json.Unmarshal(data, config); err != nil {
+			return fmt.Errorf("konfig: decode %s: %w", file, err)
+		}
+	case ".toml":
+		if err := toml.Unmarshal(data, config); err != nil {
+			return fmt.Errorf("konfig: decode %s: %w", file, err)
+		}
+	case ".yaml", ".yml":
+		if err := unmarshalYAML(data, config); err != nil {
+			return fmt.Errorf("konfig: decode %s: %w", file, err)
+		}
+	default:
+		if err := tryFallbackDecoders(data, config); err != nil {
+			return fmt.Errorf("konfig: decode %s: %w", file, err)
+		}
+	}
+
+	return nil
+}
+
+func tryFallbackDecoders(data []byte, config interface{}) error {
+	if err := toml.Unmarshal(data, config); err == nil {
+		return nil
+	}
+	if err := json.Unmarshal(data, config); err == nil {
+		return nil
+	}
+	if err := unmarshalYAML(data, config); err == nil {
+		return nil
+	}
+	return errors.New("konfig: failed to decode configuration data")
+}
+
+func applyEnvOverrides(rv reflect.Value, prefix string) (int, error) {
+	if rv.Kind() != reflect.Ptr || rv.IsNil() {
+		return 0, errors.New("konfig: env overrides require a struct pointer")
+	}
+
+	elem := rv.Elem()
+	if elem.Kind() != reflect.Struct {
+		return 0, errors.New("konfig: env overrides require a pointer to struct")
+	}
+
+	return setStructFieldsFromEnv(elem, prefix)
+}
+
+func setStructFieldsFromEnv(structValue reflect.Value, prefix string) (int, error) {
+	var applied int
+	structType := structValue.Type()
+
+	for i := 0; i < structValue.NumField(); i++ {
+		fieldType := structType.Field(i)
+		if !fieldType.IsExported() {
+			continue
+		}
+
+		fieldValue := structValue.Field(i)
+		key, ok := envKey(fieldType, prefix)
+		if !ok {
+			continue
+		}
+
+		if fieldValue.Kind() == reflect.Struct {
+			nestedCount, err := setStructFieldsFromEnv(fieldValue, key)
+			if err != nil {
+				return applied, err
+			}
+			applied += nestedCount
+			continue
+		}
+
+		if fieldValue.Kind() == reflect.Ptr && fieldValue.Type().Elem().Kind() == reflect.Struct {
+			if fieldValue.IsNil() {
+				fieldValue.Set(reflect.New(fieldValue.Type().Elem()))
+			}
+			nestedCount, err := setStructFieldsFromEnv(fieldValue.Elem(), key)
+			if err != nil {
+				return applied, err
+			}
+			applied += nestedCount
+			continue
+		}
+
+		value, ok := os.LookupEnv(key)
+		if !ok {
+			continue
+		}
+
+		if err := assignFromString(fieldValue, value); err != nil {
+			return applied, fmt.Errorf("konfig: set %s: %w", key, err)
+		}
+
+		applied++
+	}
+
+	return applied, nil
+}
+
+func envKey(field reflect.StructField, prefix string) (string, bool) {
+	tag := field.Tag.Get("env")
+	if tag == "-" {
+		return "", false
+	}
+
+	if tag != "" {
+		tag = strings.Split(tag, ",")[0]
+	}
+
+	name := tag
+	if name == "" {
+		name = firstNonEmptyTagValue(field, "konfig", "json", "yaml", "toml")
+	}
+	if name == "" {
+		name = field.Name
+	}
+
+	key := toEnvKey(name)
+	if key == "" {
+		return "", false
+	}
+
+	if prefix != "" {
+		key = prefix + "_" + key
+	}
+
+	return key, true
+}
+
+func firstNonEmptyTagValue(field reflect.StructField, names ...string) string {
+	for _, name := range names {
+		tag := field.Tag.Get(name)
+		if tag == "" {
+			continue
+		}
+		tag = strings.Split(tag, ",")[0]
+		if tag == "-" || tag == "" {
+			continue
+		}
+		return tag
+	}
+	return ""
+}
+
+func toEnvKey(name string) string {
+	name = strings.TrimSpace(name)
+	if name == "" {
+		return ""
+	}
+
+	var out []rune
+	var prevRune rune
+	var hasPrev bool
+
+	appendUnderscore := func() {
+		if len(out) == 0 || out[len(out)-1] == '_' {
+			return
+		}
+		out = append(out, '_')
+	}
+
+	for _, r := range name {
+		switch {
+		case r == '_' || r == '-' || r == '.' || unicode.IsSpace(r):
+			appendUnderscore()
+			hasPrev = false
+			continue
+		case hasPrev && isBoundary(prevRune, r):
+			appendUnderscore()
+		}
+
+		out = append(out, unicode.ToUpper(r))
+		prevRune = r
+		hasPrev = true
+	}
+
+	// trim leading/trailing underscores and collapse duplicates
+	j := 0
+	for _, r := range out {
+		if r == '_' {
+			if j == 0 || out[j-1] == '_' {
+				continue
 			}
 		}
+		out[j] = r
+		j++
 	}
-	return "env"
+	out = out[:j]
+	for len(out) > 0 && out[len(out)-1] == '_' {
+		out = out[:len(out)-1]
+	}
+
+	return string(out)
 }
 
-func StringToInt(f reflect.Value, value string, bitSize int) {
-	convertedValue, err := strconv.ParseInt(value, 10, bitSize)
-
-	if err == nil {
-		if !f.OverflowInt(convertedValue) {
-			f.SetInt(convertedValue)
-		}
+func isBoundary(prev rune, current rune) bool {
+	if unicode.IsLower(prev) && unicode.IsUpper(current) {
+		return true
 	}
+	if unicode.IsDigit(current) && !unicode.IsDigit(prev) {
+		return true
+	}
+	if unicode.IsDigit(prev) && !unicode.IsDigit(current) {
+		return true
+	}
+	return false
 }
 
-func StringToUInt(f reflect.Value, value string, bitSize int) {
-	convertedValue, err := strconv.ParseUint(value, 10, bitSize)
-
-	if err == nil {
-		if !f.OverflowUint(convertedValue) {
-			f.SetUint(convertedValue)
+func assignFromString(field reflect.Value, value string) error {
+	if field.Kind() == reflect.Ptr {
+		if field.IsNil() {
+			field.Set(reflect.New(field.Type().Elem()))
 		}
-	}
-}
-
-func StringToBool(f reflect.Value, value string) {
-	convertedValue, err := strconv.ParseBool(value)
-
-	if err == nil {
-		f.SetBool(convertedValue)
-	}
-}
-
-func StringToFloat(f reflect.Value, value string, bitSize int) {
-	convertedValue, err := strconv.ParseFloat(value, bitSize)
-
-	if err == nil {
-		if !f.OverflowFloat(convertedValue) {
-			f.SetFloat(convertedValue)
-		}
-	}
-}
-
-func GetConfigFilesWithExt(files ...string) (error, []string){
-	var fileList []string
-
-	for i := len(files) - 1; i >=0; i-- {
-		found := false
-		file := files[i]
-
-		if fileInfo, err := os.Stat(file); err == nil && fileInfo.Mode().IsRegular() {
-			found = true
-			fileList = append(fileList, file)
-			fmt.Println("file found:", fileList)
-		}
-
-		if !found {
-			//err := error
-			fmt.Println(fileList)
-			return errors.New("Not found configuration files"), nil
-		}
+		field = field.Elem()
 	}
 
-	return nil, fileList
+	if !field.CanSet() {
+		return errors.New("field cannot be set")
+	}
+
+	switch field.Kind() {
+	case reflect.String:
+		field.SetString(value)
+	case reflect.Bool:
+		v, err := strconv.ParseBool(value)
+		if err != nil {
+			return err
+		}
+		field.SetBool(v)
+	case reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64:
+		v, err := strconv.ParseInt(value, 10, field.Type().Bits())
+		if err != nil {
+			return err
+		}
+		field.SetInt(v)
+	case reflect.Uint, reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64, reflect.Uintptr:
+		v, err := strconv.ParseUint(value, 10, field.Type().Bits())
+		if err != nil {
+			return err
+		}
+		field.SetUint(v)
+	case reflect.Float32, reflect.Float64:
+		v, err := strconv.ParseFloat(value, field.Type().Bits())
+		if err != nil {
+			return err
+		}
+		field.SetFloat(v)
+	default:
+		return fmt.Errorf("unsupported kind %s", field.Kind())
+	}
+
+	return nil
 }

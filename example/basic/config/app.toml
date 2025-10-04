@@ -1,0 +1,8 @@
+Server = "toml.example.local"
+Port = 9000
+Debug = true
+
+[Database]
+Type = "postgres"
+Name = "app_db"
+Port = 5432

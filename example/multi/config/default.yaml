@@ -1,0 +1,6 @@
+Server: api.internal
+Port: 8080
+Debug: false
+Labels:
+  env: staging
+  region: us-west-2

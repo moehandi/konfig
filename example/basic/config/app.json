@@ -1,0 +1,10 @@
+{
+  "Server": "json.example.local",
+  "Port": 8080,
+  "Debug": true,
+  "Database": {
+    "Type": "postgres",
+    "Name": "app_db",
+    "Port": 5432
+  }
+}

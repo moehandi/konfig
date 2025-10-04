@@ -1,0 +1,7 @@
+Server: yaml.example.local
+Port: 7000
+Debug: false
+Database:
+  Type: mysql
+  Name: reporting
+  Port: 3306

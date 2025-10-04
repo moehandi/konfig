@@ -1,0 +1,12 @@
+{
+  "Address": "file.example.local",
+  "Port": 10080,
+  "timeout_secs": 10,
+  "FeatureFlags": {
+    "Beta": false
+  },
+  "Credentials": {
+    "Username": "file-user",
+    "Password": "file-pass"
+  }
+}

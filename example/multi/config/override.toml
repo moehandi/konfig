@@ -1,0 +1,6 @@
+Server = "api.public"
+Debug = true
+
+[labels]
+region = "eu-central-1"
+cluster = "primary"
