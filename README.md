@@ -1,5 +1,11 @@
 # konfig
 
+[![Go Reference](https://pkg.go.dev/badge/github.com/moehandi/konfig.svg)](https://pkg.go.dev/github.com/moehandi/konfig)
+[![Go Report Card](https://goreportcard.com/badge/github.com/moehandi/konfig)](https://goreportcard.com/report/github.com/moehandi/konfig)
+[![CI](https://github.com/moehandi/konfig/actions/workflows/ci.yml/badge.svg)](https://github.com/moehandi/konfig/actions/workflows/ci.yml)
+[![Codecov](https://codecov.io/gh/moehandi/konfig/branch/master/graph/badge.svg)](https://codecov.io/gh/moehandi/konfig)
+![Go Version](https://img.shields.io/badge/go-1.25+-blue)
+
 `konfig` is a small, bootstrapped helper for loading application configuration in Go. It supports JSON, TOML, and YAML files with deterministic precedence and environmental overrides that are ergonomic enough to make shipping 12-factor apps a breeze. 
 
 - JSON/TOML/YAML parsing with automatic extension discovery
